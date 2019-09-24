@@ -24,6 +24,61 @@ func TestDefaultNetworkMarshall(t *testing.T) {
 	}
 }
 
+func TestNetworkOvsUnmarshall(t *testing.T) {
+	// some testing XML from official docs (some unsupported attrs will be just ignored)
+	// Openvswitch's version
+	text := ` 
+	<network>
+  	<name>ovs-net</name>
+  	<forward mode="bridge"/>
+  	<virtualport type='openvswitch'/>
+  	<vlan trunk='yes'>
+  		<tag id='1' nativeMode='untagged'/>
+		<tag id='10'/>
+		<tag id='11'/>
+  	</vlan>
+  	<portgroup name='internet_facing'>
+  		<vlan>
+  			<tag id='1'/>
+  		</vlan>
+  	</portgroup>
+  	<portgroup name='private'>
+  		<vlan>
+  			<tag id='10'/>
+  		</vlan>
+  	</portgroup>
+   	<portgroup name='internal'>
+  		<vlan>
+	  		<tag id='11'/>
+	  	</vlan>
+  	</portgroup>
+	</network>
+	`
+	b, err := newDefNetworkFromXML(text)
+	if err != nil {
+		t.Errorf("could not parse: %s", err)
+	}
+	if b.Name != "ovs-net" {
+		t.Errorf("wrong network name :'%s'", b.Name)
+	}
+	if b.Forward.Mode != "bridge" {
+		t.Errorf("wrong forward mode: '%s'", b.Forward.Mode)
+	}
+	if b.VirtualPort.Params.OpenVSwitch != nil {
+		t.Errorf("wrong virtual port type")
+	}
+	if b.VLAN.Trunk != "yes" {
+		t.Errorf("wrong vlan trunk modeort type: '%s'", b.VLAN.Trunk)
+	}
+	if len(b.PortGroups) != 3 {
+		t.Errorf("wrong number of port group '%d'", len(b.PortGroups))
+	}
+	for _, portgroup := range b.PortGroups {
+		if (portgroup.Name != "internet_facing") && (portgroup.Name != "private") && (portgroup.Name != "internal") {
+			t.Errorf("wrong name of port group '%s'", portgroup.Name)
+		}
+	}
+}
 func TestNetworkDefUnmarshall(t *testing.T) {
 	// some testing XML from the official docs (some unsupported attrs will be just ignored)
 	text := `

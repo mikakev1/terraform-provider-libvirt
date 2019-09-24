@@ -915,6 +915,36 @@ func setNetworkInterfaces(d *schema.ResourceData, domainDef *libvirtxml.Domain,
 		} else {
 			// no network has been specified: we are on our own
 		}
+		if virtualPortTypeI, ok := d.GetOk(prefix + ".virtualport_type"); ok {
+			if virtualPortTypeI == "openvswitch" {
+					netIface.VirtualPort = &libvirtxml.DomainInterfaceVirtualPort{
+					Params: &libvirtxml.DomainInterfaceVirtualPortParams{
+						OpenVSwitch: &libvirtxml.DomainInterfaceVirtualPortParamsOpenVSwitch{
+							// InterfaceID: ,
+							// ProfileID:
+						},
+					},
+				}
+			} else if virtualPortTypeI == "802.1Qbg" {
+				netIface.VirtualPort = &libvirtxml.DomainInterfaceVirtualPort{
+					Params: &libvirtxml.DomainInterfaceVirtualPortParams{
+						VEPA8021QBG: &libvirtxml.DomainInterfaceVirtualPortParamsVEPA8021QBG{},
+					},
+				}
+			} else if virtualPortTypeI == "midonet" {
+				netIface.VirtualPort = &libvirtxml.DomainInterfaceVirtualPort{
+					Params: &libvirtxml.DomainInterfaceVirtualPortParams{
+						MidoNet: &libvirtxml.DomainInterfaceVirtualPortParamsMidoNet{},
+					},
+				}
+			} else if virtualPortTypeI == "802.1Qbh" {
+				netIface.VirtualPort = &libvirtxml.DomainInterfaceVirtualPort{
+					Params: &libvirtxml.DomainInterfaceVirtualPortParams{
+						VNTag8011QBH: &libvirtxml.DomainInterfaceVirtualPortParamsVNTag8021QBH{},
+					},
+				}
+			}
+		}
 
 		domainDef.Devices.Interfaces = append(domainDef.Devices.Interfaces, netIface)
 	}
