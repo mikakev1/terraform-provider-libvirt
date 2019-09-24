@@ -917,7 +917,7 @@ func setNetworkInterfaces(d *schema.ResourceData, domainDef *libvirtxml.Domain,
 		}
 		if virtualPortTypeI, ok := d.GetOk(prefix + ".virtualport_type"); ok {
 			if virtualPortTypeI == "openvswitch" {
-					netIface.VirtualPort = &libvirtxml.DomainInterfaceVirtualPort{
+				netIface.VirtualPort = &libvirtxml.DomainInterfaceVirtualPort{
 					Params: &libvirtxml.DomainInterfaceVirtualPortParams{
 						OpenVSwitch: &libvirtxml.DomainInterfaceVirtualPortParamsOpenVSwitch{
 							// InterfaceID: ,

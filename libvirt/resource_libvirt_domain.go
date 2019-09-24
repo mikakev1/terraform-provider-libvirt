@@ -199,6 +199,10 @@ func resourceLibvirtDomain() *schema.Resource {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
+						"virtualport_type": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 						"hostname": {
 							Type:     schema.TypeString,
 							Optional: true,
@@ -209,6 +213,11 @@ func resourceLibvirtDomain() *schema.Resource {
 							Optional:         true,
 							Computed:         true,
 							DiffSuppressFunc: suppress.CaseDifference,
+						},
+						"virtualport_params": {
+							Type:     schema.TypeMap,
+							Optional: true,
+							Computed: true,
 						},
 						"wait_for_lease": {
 							Type:     schema.TypeBool,
@@ -870,15 +879,16 @@ func resourceLibvirtDomainRead(d *schema.ResourceData, meta interface{}) error {
 
 		mac := strings.ToUpper(networkInterfaceDef.MAC.Address)
 		netIface := map[string]interface{}{
-			"network_id":     "",
-			"network_name":   "",
-			"bridge":         "",
-			"vepa":           "",
-			"macvtap":        "",
-			"passthrough":    "",
-			"mac":            mac,
-			"hostname":       "",
-			"wait_for_lease": false,
+			"network_id":       "",
+			"network_name":     "",
+			"bridge":           "",
+			"vepa":             "",
+			"macvtap":          "",
+			"passthrough":      "",
+			"mac":              mac,
+			"hostname":         "",
+			"virtualport_type": "",
+			"wait_for_lease":   false,
 		}
 
 		netIface["wait_for_lease"] = d.Get(prefix + ".wait_for_lease").(bool)
@@ -921,6 +931,9 @@ func resourceLibvirtDomainRead(d *schema.ResourceData, meta interface{}) error {
 			}
 		} else if networkInterfaceDef.Source.Bridge != nil {
 			netIface["bridge"] = networkInterfaceDef.Source.Bridge.Bridge
+			if networkInterfaceDef.VirtualPort.Params.OpenVSwitch != nil {
+				netIface["virtualport_type"] = "openvswitch"
+			}
 		} else if networkInterfaceDef.Source.Direct != nil {
 			switch networkInterfaceDef.Source.Direct.Mode {
 			case "vepa":
