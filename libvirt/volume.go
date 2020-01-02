@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/libvirt/libvirt-go"
 )
 
@@ -38,7 +38,6 @@ func volumeWaitForExists(virConn *libvirt.Connect, key string) error {
 		Target:     []string{volExistsID},
 		Refresh:    volumeExists(virConn, key),
 		Timeout:    1 * time.Minute,
-		Delay:      5 * time.Second,
 		MinTimeout: 3 * time.Second,
 	}
 
@@ -56,7 +55,6 @@ func volumeWaitDeleted(virConn *libvirt.Connect, key string) error {
 		Target:     []string{volNotExistsID},
 		Refresh:    volumeExists(virConn, key),
 		Timeout:    1 * time.Minute,
-		Delay:      5 * time.Second,
 		MinTimeout: 3 * time.Second,
 	}
 
@@ -99,12 +97,21 @@ func volumeDelete(client *Client, key string) error {
 	// Does not solve the problem but it makes it happen less often.
 	_, err = volume.GetXMLDesc(0)
 	if err != nil {
-		return fmt.Errorf("Can't retrieve volume %s XML desc: %s", key, err)
+		virErr := err.(libvirt.Error)
+		if virErr.Code != libvirt.ERR_NO_STORAGE_VOL {
+			return fmt.Errorf("Can't retrieve volume %s XML desc: %s", key, err)
+		}
+		// Volume is probably gone already, getting its XML description is pointless
 	}
 
 	err = volume.Delete(0)
 	if err != nil {
-		return fmt.Errorf("Can't delete volume %s: %s", key, err)
+		virErr := err.(libvirt.Error)
+		if virErr.Code != libvirt.ERR_NO_STORAGE_VOL {
+			return fmt.Errorf("Can't delete volume %s: %s", key, err)
+		}
+		// Volume is gone already
+		return nil
 	}
 
 	return volumeWaitDeleted(client.libvirt, key)
