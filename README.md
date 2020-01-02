@@ -102,6 +102,26 @@ make install
 
 You will now find the binary at `$GOPATH/bin/terraform-provider-libvirt`.
 
+#### Windows
+
+To build it on Windows (64bit) one can use MinGW64 (http://www.msys2.org/)
+
+Install Golang on Windows  
+Clone terraform-provider-libvirt repository  
+Open MinGW64 Console
+```console
+pacman -S mingw-w64-x86_64-libvirt
+export PATH=$PATH:/c/Go/bin
+pacman -S mingw-w64-x86_64-pkg-config
+pacman -S mingw-w64-x86_64-glib2
+pacman -S mingw-w64-x86_64-dbus-glib
+pacman -S mingw-w64-x86_64-libssh
+pacman -S mingw-w64-x86_64-yajl
+export GO111MODULE=on
+export GOFLAGS=-mod=vendor
+go install
+```
+
 # Installing
 
 *  Check that libvirt daemon 1.2.14 or newer is running on the hypervisor (`virsh version --daemon`)
@@ -153,7 +173,7 @@ Look at more advanced examples [here](examples/)
 
 ### Using multiple hypervisors / provider instances
 
-You can target different libvirt hosts instantiating the [provider multiple times](https://www.terraform.io/docs/configuration/providers.html#multiple-provider-instances). [Example](examples/multiple).
+You can target different libvirt hosts instantiating the [provider multiple times](https://www.terraform.io/docs/configuration/providers.html#multiple-provider-instances). [Example](examples/v0.12/multiple).
 
 
 ### Using qemu-agent
@@ -188,7 +208,7 @@ Be aware that this variables may be subject to change again in future versions.
    Docker examples showing how to use the Libvirt Provider
 
 * [Openshift 4 Installer](https://github.com/openshift/installer)
-  The Openshift 4 Installer uses Terraform for cluster orchestration and relies on terroform-provider-libvirt for
+  The Openshift 4 Installer uses Terraform for cluster orchestration and relies on terraform-provider-libvirt for
   libvirt platform.
 
 ## Authors

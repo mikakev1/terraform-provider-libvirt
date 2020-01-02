@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hashicorp/terraform/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	libvirt "github.com/libvirt/libvirt-go"
 )
 
@@ -231,7 +231,16 @@ func resourceLibvirtVolumeCreate(d *schema.ResourceData, meta interface{}) error
 	// create the volume
 	volume, err := pool.StorageVolCreateXML(data, 0)
 	if err != nil {
-		return fmt.Errorf("Error creating libvirt volume: %s", err)
+		virErr := err.(libvirt.Error)
+		if virErr.Code != libvirt.ERR_STORAGE_VOL_EXIST {
+			return fmt.Errorf("Error creating libvirt volume: %s", err)
+		}
+		// oops, volume exists already, read it and move on
+		volume, err = pool.LookupStorageVolByName(volumeDef.Name)
+		if err != nil {
+			return fmt.Errorf("Error looking up libvirt volume: %s", err)
+		}
+		log.Printf("[INFO] Volume about to be created was found and left as-is: %s", volumeDef.Name)
 	}
 	defer volume.Free()
 
@@ -254,6 +263,10 @@ func resourceLibvirtVolumeCreate(d *schema.ResourceData, meta interface{}) error
 	if _, ok := d.GetOk("source"); ok {
 		err = img.Import(newCopier(client.libvirt, volume, volumeDef.Capacity.Value), volumeDef)
 		if err != nil {
+			//  don't save volume ID  in case of error. This will taint the volume after.
+			// If we don't throw away the id, we will keep instead a broken volume.
+			// see for reference: https://github.com/dmacvicar/terraform-provider-libvirt/issues/494
+			d.Set("id", "")
 			return fmt.Errorf("Error while uploading source %s: %s", img.String(), err)
 		}
 	}
@@ -306,7 +319,13 @@ func resourceLibvirtVolumeRead(d *schema.ResourceData, meta interface{}) error {
 
 	info, err := volume.GetInfo()
 	if err != nil {
-		return fmt.Errorf("error retrieving volume name: %s", err)
+		virErr := err.(libvirt.Error)
+		if virErr.Code != libvirt.ERR_NO_STORAGE_VOL {
+			return fmt.Errorf("error retrieving volume info: %s", err)
+		}
+		log.Printf("Volume '%s' may have been deleted outside Terraform", d.Id())
+		d.SetId("")
+		return nil
 	}
 	d.Set("size", info.Capacity)
 
