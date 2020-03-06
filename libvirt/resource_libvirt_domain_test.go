@@ -46,6 +46,33 @@ func TestAccLibvirtDomain_Basic(t *testing.T) {
 	})
 }
 
+func TestAccLibvirtDomain_Description(t *testing.T) {
+	var domain libvirt.Domain
+	randomResourceName := acctest.RandStringFromCharSet(10, acctest.CharSetAlpha)
+	randomDomainName := acctest.RandStringFromCharSet(10, acctest.CharSetAlpha)
+	resource.Test(t, resource.TestCase{
+		PreCheck:     func() { testAccPreCheck(t) },
+		Providers:    testAccProviders,
+		CheckDestroy: testAccCheckLibvirtDomainDestroy,
+		Steps: []resource.TestStep{
+			{
+				Config: fmt.Sprintf(`
+				resource "libvirt_domain" "%s" {
+					name = "%s"
+                    description = "unit test description"
+				}`, randomResourceName, randomDomainName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckLibvirtDomainExists("libvirt_domain."+randomResourceName, &domain),
+					resource.TestCheckResourceAttr(
+						"libvirt_domain."+randomResourceName, "name", randomDomainName),
+					resource.TestCheckResourceAttr(
+                        "libvirt_domain."+randomResourceName, "description", "unit test description"),
+				),
+			},
+		},
+	})
+}
+
 func TestAccLibvirtDomain_Detailed(t *testing.T) {
 	var domain libvirt.Domain
 	randomResourceName := acctest.RandStringFromCharSet(10, acctest.CharSetAlpha)
@@ -315,6 +342,18 @@ func TestAccLibvirtDomain_BlockDevice(t *testing.T) {
 	randomDeviceName := acctest.RandStringFromCharSet(33, acctest.CharSetAlpha)
 
 	tmpfile, loopdev, err := createTempBlockDev(randomDeviceName)
+	defer func() {
+		if err := os.Remove(tmpfile); err != nil {
+			log.Printf("Error removing temporary file %s: %s\n", tmpfile, err)
+		}
+	}()
+
+	defer func() {
+		cmd := exec.Command("sudo", "/sbin/losetup", "--detach", loopdev)
+		if err := cmd.Run(); err != nil {
+			log.Printf("Error detaching loop device %s: %s\n", loopdev, err)
+		}
+	}()
 
 	if err != nil {
 		t.Fatal(err)
@@ -329,7 +368,7 @@ func TestAccLibvirtDomain_BlockDevice(t *testing.T) {
 			block_device = "%s"
 		}
 
-	}`, randomDomainName, randomDomainName, tmpfile)
+	}`, randomDomainName, randomDomainName, loopdev)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:     func() { testAccPreCheck(t) },
@@ -340,16 +379,11 @@ func TestAccLibvirtDomain_BlockDevice(t *testing.T) {
 				Config: configBlockDevice,
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckLibvirtDomainExists("libvirt_domain."+randomDomainName, &domain),
-					testAccCheckLibvirtBlockDevice(tmpfile, &domain),
+					testAccCheckLibvirtBlockDevice(loopdev, &domain),
 				),
 			},
 		},
 	})
-
-	cmd := exec.Command("sudo", "losetup", "--detach", loopdev)
-	if err := cmd.Run(); err != nil {
-		log.Printf("Error detaching loop device %s: %s\n", loopdev, err)
-	}
 }
 
 /* FIXME: Disable for now. It fails with:
@@ -1210,41 +1244,50 @@ func testAccCheckLibvirtDomainKernelInitrdCmdline(domain *libvirt.Domain, kernel
 	}
 }
 
-// Creates a temporary block device and mounts it to an available loop device
-// Returns a the full path to the block device and the associated loop device
+// Creates a temporary file and attaches it to an available loop device
+// Returns a the full path to the temporary file and the associated loop device
 func createTempBlockDev(devname string) (string, string, error) {
-	fmt.Printf("Creating a temporary block device\n")
+	fmt.Printf("Creating a temporary file for loop device\n")
 
 	// Create a 1MB temp file
-	filename := "/tmp/" + devname
-	cmd := exec.Command("dd", "if=/dev/urandom", "of="+filename, "bs=1024", "count=1024")
+	filename := filepath.Join(os.TempDir(), devname)
+	cmd := exec.Command("dd", "if=/dev/zero", "of="+filename, "bs=1024", "count=1024")
 	fmt.Printf("Executing command: %s\n", strings.Join(cmd.Args, " "))
 	if err := cmd.Run(); err != nil {
 		return "", "", fmt.Errorf("Error creating file %s: %s", filename, err)
 	}
 
 	// Format the file
-	cmd = exec.Command("mkfs.ext4", "-F", "-q", filename)
+	cmd = exec.Command("/sbin/mkfs.ext4", "-F", "-q", filename)
 	fmt.Printf("Executing command: %s\n", strings.Join(cmd.Args, " "))
 	if err := cmd.Run(); err != nil {
 		return "", "", fmt.Errorf("Error formatting file system: %s", err)
 	}
 
 	// Find an available loop device
-	loopdev, err := exec.Command("losetup", "--find").Output()
+	cmd = exec.Command("/sbin/losetup", "--find")
+	loopdevStr, err := cmd.Output()
 	fmt.Printf("Executing command: %s\n", strings.Join(cmd.Args, " "))
 	if err != nil {
 		return "", "", fmt.Errorf("Error searching for available loop device: %s", err)
 	}
+	loopdev := strings.TrimRight(string(loopdevStr), "\n")
 
-	// Mount the file to a loop device
-	cmd = exec.Command("sudo", "losetup", "--read-only", strings.TrimRight(string(loopdev), "\n"), filename)
+	// give the same permissions to the loop device as the backing file
+	cmd = exec.Command("sudo", "chown", "--reference", filename, loopdev)
 	fmt.Printf("Executing command: %s\n", strings.Join(cmd.Args, " "))
 	if err := cmd.Run(); err != nil {
-		return "", "", fmt.Errorf("Error mounting block device: %s", err)
+		return "", "", fmt.Errorf("Error copying permissions from %s: %s", filename, err)
 	}
 
-	log.Printf("Temporary block device %s mounted at %s", filename, loopdev)
+	// Mount the file to a loop device
+	cmd = exec.Command("sudo", "/sbin/losetup", loopdev, filename)
+	fmt.Printf("Executing command: %s\n", strings.Join(cmd.Args, " "))
+	if err := cmd.Run(); err != nil {
+		return "", "", fmt.Errorf("Error setting up loop device: %s", err)
+	}
+
+	log.Printf("Temporary file %s attached to loop device %s", filename, loopdev)
 
 	return filename, strings.TrimRight(string(loopdev), "\n"), nil
 }
